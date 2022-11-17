@@ -1,10 +1,9 @@
 from pyVoIP.VoIP import VoIPPhone, InvalidStateError, CallState
 import time
 import wave
-
-def incoming(call):
-    print("got incoming call, rejecting.")
-    call.deny()
+import sqlite3
+db = sqlite3.connect("/etc/mfa/user.db")
+cursor = db.cursor()
 
 def placecall(phone: VoIPPhone, number: str):
     ok = False
@@ -24,8 +23,11 @@ def placecall(phone: VoIPPhone, number: str):
         time.sleep(0.1)
     if ok:
         f = wave.open('confirmed.wav', 'rb')
+        tmp = "ok"
     else:
         f = wave.open('failed.wav','rb')
+        tmp = "bad"
+    cursor.execute("UPDATE users SET mfa = '{}' WHERE number = {}".format(tmp, number))
     frames = f.getnframes()
     data = f.readframes(frames)
     f.close()
@@ -35,7 +37,16 @@ def placecall(phone: VoIPPhone, number: str):
         time.sleep(0.1)
     call.hangup()
 
-phone = VoIPPhone(<SIP Server IP>, <SIP Server Port>, <SIP Server Username>, <SIP Server Password>, myIP=<Your computers local IP>, callCallback=incoming)
+phone = VoIPPhone("sip-server-addr-replaceme", "sip-port-replaceme", "sip-username-replaceme", "password-replaceme", myIP="0.0.0.0")
 phone.start()
-input('Press enter to disable the phone')
+while True:
+    try:
+        time.sleep(0.1)
+        result = cursor.execute("SELECT number FROM users WHERE mfa = 'pend'")
+        for n in result.fetchall():
+            print("Placing call to",n[0])
+            placecall(phone, n[0])
+    except KeyboardInterrupt:
+        break
+
 phone.stop()
