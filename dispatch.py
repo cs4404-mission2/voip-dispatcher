@@ -2,9 +2,12 @@ from pyVoIP.VoIP import VoIPPhone, InvalidStateError, CallState
 import time
 import wave
 import sqlite3
+import yaml
+
 db = sqlite3.connect("/etc/mfa/user.db")
 cursor = db.cursor()
-
+conffile = open("/etc/mfa/voip.yaml","r")
+conf = yaml.safe_load(conffile)
 def placecall(phone: VoIPPhone, number: str):
     ok = False
     call = phone.call(str)
@@ -37,7 +40,7 @@ def placecall(phone: VoIPPhone, number: str):
         time.sleep(0.1)
     call.hangup()
 
-phone = VoIPPhone("sip-server-addr-replaceme", "sip-port-replaceme", "sip-username-replaceme", "password-replaceme", myIP="0.0.0.0")
+phone = VoIPPhone(conf["server_addr"], "5060", conf["server_user"], conf["server_passwd"], myIP="0.0.0.0")
 phone.start()
 while True:
     try:
