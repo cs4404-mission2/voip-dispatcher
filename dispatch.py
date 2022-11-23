@@ -1,16 +1,33 @@
-from pyVoIP.VoIP import VoIPPhone, InvalidStateError, CallState
+from pyVoIP.VoIP import VoIPPhone, CallState
 import time
 import wave
-import sqlite3
 import yaml
+from flask import Flask,request
+import requests
 
-db = sqlite3.connect("/etc/mfa/user.db")
-cursor = db.cursor()
+app = Flask(__name__)
+class authrequest:
+    def __init__(self, number:str):
+        self.number = number
+        self.inprog = False
+verifylist = []
+
+@app.route('/verify', methods=["POST"])
+def verify_num():
+    global verifylist
+    num = request.args.get("num", str)
+    for i in verifylist:
+        if i.number == num:
+            return "ok"
+    verifylist.append(authrequest(num))
+    return "ok"
+
 conffile = open("/etc/mfa/voip.yaml","r")
 conf = yaml.safe_load(conffile)
-def placecall(phone: VoIPPhone, number: str):
+def placecall(phone: VoIPPhone, req: authrequest):
+    global verifylist
     ok = False
-    call = phone.call(str)
+    call = phone.call(req.number)
     while call.state == CallState.DIALING:
         time.sleep(0.1)
     f = wave.open('greeting.wav', 'rb')
@@ -26,11 +43,12 @@ def placecall(phone: VoIPPhone, number: str):
         time.sleep(0.1)
     if ok:
         f = wave.open('confirmed.wav', 'rb')
-        tmp = "ok"
+        stat = "ok"
     else:
         f = wave.open('failed.wav','rb')
-        tmp = "bad"
-    cursor.execute("UPDATE users SET mfa = '{}' WHERE number = {}".format(tmp, number))
+        stat = "bad"
+
+    requests.post("http://hyperion.internal/endpoint",data={"number":req.number,"status":stat})
     frames = f.getnframes()
     data = f.readframes(frames)
     f.close()
@@ -39,16 +57,18 @@ def placecall(phone: VoIPPhone, number: str):
     while (call.state == CallState.ANSWERED) and (time.time() < timeout):
         time.sleep(0.1)
     call.hangup()
+    verifylist.remove(req)
 
-phone = VoIPPhone(conf["server_addr"], "5060", conf["server_user"], conf["server_passwd"], myIP="0.0.0.0")
+phone = VoIPPhone(conf["server_addr"], 5060, conf["server_user"], conf["server_passwd"], myIP="0.0.0.0")
 phone.start()
+app.run()
 while True:
     try:
         time.sleep(0.1)
-        result = cursor.execute("SELECT number FROM users WHERE mfa = 'pend'")
-        for n in result.fetchall():
-            print("Placing call to",n[0])
-            placecall(phone, n[0])
+        for n in verifylist:
+            if not n.inprog:
+                n.inprog = True
+                placecall(phone, n)
     except KeyboardInterrupt:
         break
 
