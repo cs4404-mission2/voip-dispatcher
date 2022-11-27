@@ -6,6 +6,7 @@ from flask import Flask,request
 import requests
 
 app = Flask(__name__)
+
 class authrequest:
     def __init__(self, number:str):
         self.number = number
@@ -48,7 +49,7 @@ def placecall(phone: VoIPPhone, req: authrequest):
         f = wave.open('failed.wav','rb')
         stat = "bad"
 
-    requests.post("http://hyperion.internal/endpoint",data={"number":req.number,"status":stat})
+    requests.post("http://127.0.0.1/endpoint",data={"number":req.number,"status":stat})
     frames = f.getnframes()
     data = f.readframes(frames)
     f.close()
@@ -61,7 +62,7 @@ def placecall(phone: VoIPPhone, req: authrequest):
 
 phone = VoIPPhone(conf["server_addr"], 5060, conf["server_user"], conf["server_passwd"], myIP="0.0.0.0")
 phone.start()
-app.run()
+app.run(port=5000)
 while True:
     try:
         time.sleep(0.1)
